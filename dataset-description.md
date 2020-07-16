@@ -1,0 +1,1 @@
+Kaiser Family Foundation (KFF) maintains data resources which provide United States specific insights into the COVID-19 pandemic. Their datasets detail varied topics ranging from state-level policies to address the Coronavirus outbreak to regional/racial analysis of the virus' impact.
