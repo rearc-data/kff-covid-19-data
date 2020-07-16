@@ -1,8 +1,6 @@
-<a href="https://www.rearc.io/data/">
-    <img src="./rearc_logo_rgb.png" alt="Rearc Logo" title="Rearc Logo" height="52" />
-</a>
-
 # COVID-19 and Related State Data | Kaiser Family Foundation (KFF)
+
+The source code outlining how this product gathers, transforms, revises and publishes its datasets is available at [https://github.com/rearc-data/kff-covid-19-data](https://github.com/rearc-data/kff-covid-19-data).
 
 ## Main Overview
 Kaiser Family Foundation (KFF) maintains data resources which provide United States specific insights into the COVID-19 pandemic. Their datasets detail varied topics ranging from state-level policies to address the Coronavirus outbreak to regional/racial analysis of the virus' impact.
