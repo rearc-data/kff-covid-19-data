@@ -1,5 +1,6 @@
 import os
 import boto3
+import time
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 from zipfile import ZipFile
@@ -9,61 +10,67 @@ from s3_md5_compare import md5_compare
 def source_dataset():
 
     source_dataset_url = 'https://github.com/KFFData/COVID-19-Data/archive/kff_master.zip'
+    
+    response = None
+    retries = 5
+    for attempt in range(retries):
+        try:
+            response = urlopen(source_dataset_url)
+        except HTTPError as e:
+            if attempt == retries:
+                raise Exception('HTTPError: ', e.code)
+            time.sleep(0.2 * attempt)
+        except URLError as e:
+            if attempt == retries:
+                raise Exception('URLError: ', e.reason)
+            time.sleep(0.2 * attempt)
+        else:
+            break
+            
+    if response == None:
+        raise Exception('There was an issue downloading the dataset')
+            
+    data_set_name = os.environ['DATA_SET_NAME']
+    zip_location = '/tmp/' + data_set_name + '.zip'
 
-    try:
-        response = urlopen(source_dataset_url)
+    with open(zip_location, 'wb') as f:
+        f.write(response.read())
 
-    except HTTPError as e:
-        raise Exception('HTTPError: ', e.code)
+    with ZipFile(zip_location, 'r') as z:
+        z.extractall('/tmp')
 
-    except URLError as e:
-        raise Exception('URLError: ', e.reason)
+    os.remove(zip_location)
 
-    else:
-        zip_location = '/tmp/' + 'test' + '.zip'
+    s3_bucket = os.environ['S3_BUCKET']
+    s3 = boto3.client('s3')
 
-        with open(zip_location, 'wb') as f:
-            f.write(response.read())
+    unzipped_name = os.listdir('/tmp')[0]
 
-        with ZipFile(zip_location, 'r') as z:
-            z.extractall('/tmp')
+    s3_uploads = []
+    asset_list = []
 
-        os.remove(zip_location)
+    for r, d, f in os.walk('/tmp/' + unzipped_name):
+        for filename in f:
 
-        s3_bucket = os.environ['S3_BUCKET']
-        data_set_name = os.environ['DATA_SET_NAME']
-        s3 = boto3.client('s3')
+            obj_name = os.path.join(r, filename).split('/', 3).pop().replace(' ', '_').lower()
+            file_location = os.path.join(r, filename)
+            new_s3_key = data_set_name + '/dataset/' + obj_name
 
-        unzipped_name = ''
+            has_changes = md5_compare(s3, s3_bucket, new_s3_key, file_location)
+            if has_changes:
+                s3.upload_file(file_location, s3_bucket, new_s3_key)
+                print('Uploaded: ' + filename)
+            else:
+                print('No changes in: ' + filename)
 
-        for filename in os.listdir('/tmp'):
-            unzipped_name = filename
+            asset_source = {'Bucket': s3_bucket, 'Key': new_s3_key}
+            s3_uploads.append({'has_changes': has_changes, 'asset_source': asset_source})
 
-        s3_uploads = []
-        asset_list = []
-
-        for r, d, f in os.walk('/tmp/' + unzipped_name):
-            for filename in f:
-
-                obj_name = os.path.join(r, filename).split('/', 3).pop().replace(' ', '_').lower()
-                file_location = os.path.join(r, filename)
-                new_s3_key = data_set_name + '/dataset/' + obj_name
-
-                has_changes = md5_compare(s3, s3_bucket, new_s3_key, file_location)
-                if has_changes:
-                    s3.upload_file(file_location, s3_bucket, new_s3_key)
-                    print('Uploaded: ' + filename)
-                else:
-                    print('No changes in: ' + filename)
-
-                asset_source = {'Bucket': s3_bucket, 'Key': new_s3_key}
-                s3_uploads.append({'has_changes': has_changes, 'asset_source': asset_source})
-
-        count_updated_data = sum(upload['has_changes'] == True for upload in s3_uploads)
-        if count_updated_data > 0:
-            asset_list = list(map(lambda upload: upload['asset_source'], s3_uploads))
-            if len(asset_list) == 0:
-                raise Exception('Something went wrong when uploading files to s3')
-        # asset_list is returned to be used in lamdba_handler function
-        # if it is empty, lambda_handler will not republish
-        return asset_list
+    count_updated_data = sum(upload['has_changes'] == True for upload in s3_uploads)
+    if count_updated_data > 0:
+        asset_list = list(map(lambda upload: upload['asset_source'], s3_uploads))
+        if len(asset_list) == 0:
+            raise Exception('Something went wrong when uploading files to s3')
+    # asset_list is returned to be used in lamdba_handler function
+    # if it is empty, lambda_handler will not republish
+    return asset_list
