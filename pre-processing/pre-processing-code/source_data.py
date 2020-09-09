@@ -67,5 +67,3 @@ def source_dataset():
         # asset_list is returned to be used in lamdba_handler function
         # if it is empty, lambda_handler will not republish
         return asset_list
-
-print(source_dataset())
